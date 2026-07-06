@@ -5,14 +5,30 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/konradreiche/cachebench"
+	"github.com/konradreiche/cachebench/benchmark/internal/lfu"
 )
 
-func Benchmark(b *testing.B) {
-	bench := cachebench.New()
-
+func BenchmarkLRU(b *testing.B) {
+	bench := cachebench.New(b)
 	for workload := range bench.Workloads() {
 		b.Run(workload.Name(), func(b *testing.B) {
 			cache := newLRU(b, workload)
+			b.ResetTimer()
+			for range b.N {
+				workload.Run(b, cache)
+			}
+		})
+	}
+}
+
+func BenchmarkLFU(b *testing.B) {
+	bench := cachebench.New(b)
+	for workload := range bench.Workloads() {
+		b.Run(workload.Name(), func(b *testing.B) {
+			cache, err := lfu.New[string, string](workload.CacheSize())
+			if err != nil {
+				b.Fatal(err)
+			}
 			b.ResetTimer()
 			for range b.N {
 				workload.Run(b, cache)
