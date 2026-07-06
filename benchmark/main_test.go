@@ -12,22 +12,33 @@ func Benchmark(b *testing.B) {
 
 	for workload := range bench.Workloads() {
 		b.Run(workload.Name(), func(b *testing.B) {
-			cache, err := lru.New[string, string](workload.CacheSize())
-			if err != nil {
-				b.Fatal(err)
-			}
+			cache := newLRU(b, workload)
 			b.ResetTimer()
 			for range b.N {
-				for key := range workload.Next() {
-					if _, ok := cache.Get(key); !ok {
-						workload.RecordMiss()
-						cache.Add(key, key)
-						continue
-					}
-					workload.RecordHit()
-				}
-				workload.RecordMetrics(b)
+				workload.Run(b, cache)
 			}
 		})
 	}
+}
+
+type lruCache struct {
+	cache *lru.Cache[string, string]
+}
+
+func newLRU(tb testing.TB, workload *cachebench.Workload) *lruCache {
+	cache, err := lru.New[string, string](workload.CacheSize())
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return &lruCache{
+		cache: cache,
+	}
+}
+
+func (l *lruCache) Load(key string) (string, bool) {
+	return l.cache.Get(key)
+}
+
+func (l *lruCache) Store(key, value string) {
+	l.cache.Add(key, value)
 }
