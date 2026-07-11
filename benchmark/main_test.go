@@ -8,33 +8,45 @@ import (
 	"github.com/konradreiche/cachebench/benchmark/internal/lfu"
 )
 
-func BenchmarkLRU(b *testing.B) {
-	bench := cachebench.New(b)
-	for workload := range bench.Workloads() {
-		b.Run(workload.Name(), func(b *testing.B) {
-			cache := newLRU(b, workload)
-			b.ResetTimer()
-			for range b.N {
-				workload.Run(b, cache)
+func Benchmark(b *testing.B) {
+	benchmarks := []benchmark{
+		{
+			name: "lru",
+			cache: func(b *testing.B, workload *cachebench.Workload) cachebench.Cache {
+				return newLRU(b, workload)
+			},
+		},
+		{
+			name: "lfu",
+			cache: func(b *testing.B, w *cachebench.Workload) cachebench.Cache {
+				cache, err := lfu.New[string, string](w.CacheSize())
+				if err != nil {
+					b.Fatal(err)
+				}
+				return cache
+			},
+		},
+	}
+
+	for _, bb := range benchmarks {
+		b.Run(bb.name, func(b *testing.B) {
+			bench := cachebench.New(b)
+			for workload := range bench.Workloads() {
+				b.Run(workload.Name(), func(b *testing.B) {
+					cache := bb.cache(b, workload)
+					b.ResetTimer()
+					for range b.N {
+						workload.Run(b, cache)
+					}
+				})
 			}
 		})
 	}
 }
 
-func BenchmarkLFU(b *testing.B) {
-	bench := cachebench.New(b)
-	for workload := range bench.Workloads() {
-		b.Run(workload.Name(), func(b *testing.B) {
-			cache, err := lfu.New[string, string](workload.CacheSize())
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.ResetTimer()
-			for range b.N {
-				workload.Run(b, cache)
-			}
-		})
-	}
+type benchmark struct {
+	cache func(b *testing.B, w *cachebench.Workload) cachebench.Cache
+	name  string
 }
 
 type lruCache struct {

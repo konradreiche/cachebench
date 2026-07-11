@@ -15,12 +15,12 @@ type Workload struct {
 	stats     *stats
 }
 
-type cache interface {
+type Cache interface {
 	Store(key, value string)
 	Load(key string) (string, bool)
 }
 
-func (w *Workload) Run(b *testing.B, cache cache) {
+func (w *Workload) Run(b *testing.B, cache Cache) {
 	for key := range w.Next() {
 		start := time.Now()
 		_, ok := cache.Load(key)
