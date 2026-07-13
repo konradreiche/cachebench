@@ -13,11 +13,17 @@ type Workload struct {
 	keyspace  uint64
 	gen       *generator.FiniteZipf
 	stats     []*stats
-	counter   atomic.Uint64
 }
 
-func (w *Workload) GetID() uint64 {
-	return w.counter.Add(1) - 1
+func (w *Workload) RunParallel(b *testing.B, cache Cache) {
+	var i atomic.Uint64
+	b.RunParallel(func(pb *testing.PB) {
+		id := i.Add(1) - 1
+		for pb.Next() {
+			w.Process(b, cache, id)
+		}
+	})
+	w.RecordMetrics(b)
 }
 
 type Cache interface {

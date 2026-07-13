@@ -26,6 +26,7 @@ func New(b *testing.B, opts ...Option) *Benchmark {
 	if err != nil {
 		b.Fatal(err)
 	}
+	b.ReportAllocs()
 	b.SetParallelism(cfg.parallelism)
 	return &Benchmark{
 		gen:      gen,
