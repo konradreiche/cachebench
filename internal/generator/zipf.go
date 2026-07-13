@@ -2,16 +2,18 @@
 package generator
 
 import (
-	"iter"
 	"math"
 	"math/rand/v2"
 	"sort"
 	"strconv"
+	"sync"
 )
 
 type FiniteZipf struct {
-	rng *rand.Rand
 	cdf []float64
+
+	mu  sync.Mutex
+	rng *rand.Rand
 }
 
 func NewFiniteZipf(keyspace uint64, α float64, opts ...Option) (*FiniteZipf, error) {
@@ -40,14 +42,12 @@ func NewFiniteZipf(keyspace uint64, α float64, opts ...Option) (*FiniteZipf, er
 	}, nil
 }
 
-func (z *FiniteZipf) Next() iter.Seq[string] {
-	return func(yield func(string) bool) {
-		u := z.rng.Float64()
-		i := sort.SearchFloat64s(z.cdf, u)
-		if !yield(strconv.FormatUint(uint64(i+1), 36)) {
-			return
-		}
-	}
+func (z *FiniteZipf) Next() string {
+	z.mu.Lock()
+	u := z.rng.Float64()
+	z.mu.Unlock()
+	i := sort.SearchFloat64s(z.cdf, u)
+	return strconv.FormatUint(uint64(i+1), 36)
 }
 
 type options struct {

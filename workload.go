@@ -1,7 +1,7 @@
 package cachebench
 
 import (
-	"iter"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,7 +12,12 @@ type Workload struct {
 	cacheSize int
 	keyspace  uint64
 	gen       *generator.FiniteZipf
-	stats     *stats
+	stats     []*stats
+	counter   atomic.Uint64
+}
+
+func (w *Workload) GetID() uint64 {
+	return w.counter.Add(1) - 1
 }
 
 type Cache interface {
@@ -20,39 +25,36 @@ type Cache interface {
 	Load(key string) (string, bool)
 }
 
-func (w *Workload) Run(b *testing.B, cache Cache) {
-	for key := range w.Next() {
-		start := time.Now()
-		_, ok := cache.Load(key)
-		w.stats.recordLoadDuration(start)
-		if !ok {
-			w.RecordMiss()
-			start = time.Now()
-			cache.Store(key, key)
-			w.stats.recordStoreDuration(start)
-			continue
-		}
-		w.RecordHit()
+func (w *Workload) Process(b *testing.B, cache Cache, id uint64) {
+	key := w.Next()
+	start := time.Now()
+	_, ok := cache.Load(key)
+	w.stats[id].recordLoadDuration(start)
+	if !ok {
+		w.stats[id].misses++
+		start = time.Now()
+		cache.Store(key, key)
+		w.stats[id].recordStoreDuration(start)
+		return
 	}
-	w.RecordMetrics(b)
+	w.stats[id].hits++
 }
 
 func (w *Workload) RecordMetrics(b *testing.B) {
-	b.ReportMetric(w.stats.hitRate()*100, "hitRate")
-	b.ReportMetric(w.stats.loadDuration(), "load-ns/op")
-	b.ReportMetric(w.stats.storeDuration(), "store-ns/op")
+	stats := newStats()
+	for _, stat := range w.stats {
+		stats.hits += stat.hits
+		stats.misses += stat.misses
+		stats.totalLoadTime += stat.totalStoreTime
+		stats.totalStoreTime += stat.totalStoreTime
+	}
+	b.ReportMetric(stats.hitRate()*100, "hitRate")
+	b.ReportMetric(stats.loadDuration(), "load-ns/op")
+	b.ReportMetric(stats.storeDuration(), "store-ns/op")
 }
 
-func (w *Workload) Next() iter.Seq[string] {
+func (w *Workload) Next() string {
 	return w.gen.Next()
-}
-
-func (w *Workload) RecordHit() {
-	w.stats.hits++
-}
-
-func (w *Workload) RecordMiss() {
-	w.stats.misses++
 }
 
 func (w *Workload) CacheSize() int {
@@ -69,6 +71,10 @@ type stats struct {
 
 	totalLoadTime  time.Duration
 	totalStoreTime time.Duration
+}
+
+func newStats() *stats {
+	return &stats{}
 }
 
 func (s *stats) recordLoadDuration(start time.Time) {

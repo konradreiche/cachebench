@@ -30,15 +30,17 @@ func Benchmark(b *testing.B) {
 
 	for _, bb := range benchmarks {
 		b.Run(bb.name, func(b *testing.B) {
-			bench := cachebench.New(b)
+			b.ReportAllocs()
+			bench := cachebench.New(b, cachebench.WithParallelism(1))
 			for workload := range bench.Workloads() {
-				b.Run(workload.Name(), func(b *testing.B) {
-					cache := bb.cache(b, workload)
-					b.ResetTimer()
-					for range b.N {
-						workload.Run(b, cache)
+				cache := bb.cache(b, workload)
+				b.RunParallel(func(pb *testing.PB) {
+					id := workload.GetID()
+					for pb.Next() {
+						workload.Process(b, cache, id)
 					}
 				})
+				workload.RecordMetrics(b)
 			}
 		})
 	}
