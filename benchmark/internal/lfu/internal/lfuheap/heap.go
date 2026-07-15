@@ -1,4 +1,4 @@
-package lfu
+package lfuheap
 
 import "container/heap"
 

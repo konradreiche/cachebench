@@ -17,9 +17,19 @@ func Benchmark(b *testing.B) {
 			},
 		},
 		{
-			name: "lfu",
+			name: "lfu-heap",
 			newCache: func(b *testing.B, w *cachebench.Workload) cachebench.Cache {
 				cache, err := lfu.New[string, string](w.CacheSize())
+				if err != nil {
+					b.Fatal(err)
+				}
+				return cache
+			},
+		},
+		{
+			name: "lfu-pid",
+			newCache: func(b *testing.B, w *cachebench.Workload) cachebench.Cache {
+				cache, err := lfu.New[string, string](w.CacheSize(), lfu.WithUsePID(true))
 				if err != nil {
 					b.Fatal(err)
 				}

@@ -51,7 +51,7 @@ func (w *Workload) RecordMetrics(b *testing.B) {
 	for _, stat := range w.stats {
 		stats.hits += stat.hits
 		stats.misses += stat.misses
-		stats.totalLoadTime += stat.totalStoreTime
+		stats.totalLoadTime += stat.totalLoadTime
 		stats.totalStoreTime += stat.totalStoreTime
 	}
 	b.ReportMetric(stats.hitRate()*100, "hitRate")

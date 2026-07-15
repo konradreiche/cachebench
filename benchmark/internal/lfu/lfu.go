@@ -2,61 +2,80 @@
 package lfu
 
 import (
-	"container/heap"
-	"sync"
+	"github.com/konradreiche/cachebench/benchmark/internal/lfu/internal/lfuheap"
+	"github.com/konradreiche/cachebench/benchmark/internal/lfu/internal/lfupid"
 )
 
 type Cache[K comparable, V any] struct {
 	size int
 
-	mu      sync.Mutex
-	data    map[K]*item[K, V]
-	clock   int
-	minHeap *MinHeap[K, V]
+	lfuHeap *lfuheap.Cache[K, V]
+	lfuPID  *lfupid.Cache[K, V]
 }
 
-func New[K comparable, V any](size int) (*Cache[K, V], error) {
-	return &Cache[K, V]{
+func New[K comparable, V any](size int, opts ...Option) (*Cache[K, V], error) {
+	cfg := options{}
+	if err := WithOptions(opts...)(&cfg); err != nil {
+		return nil, err
+	}
+	lfuHeap, err := lfuheap.New[K, V](size)
+	if err != nil {
+		return nil, err
+	}
+	cache := &Cache[K, V]{
 		size:    size,
-		data:    make(map[K]*item[K, V]),
-		minHeap: &MinHeap[K, V]{},
-	}, nil
+		lfuHeap: lfuHeap,
+	}
+	if cfg.usePID {
+		lfuPID, err := lfupid.New[K, V](size)
+		if err != nil {
+			return nil, err
+		}
+		cache.lfuPID = lfuPID
+	}
+	return cache, nil
 }
 
 func (c *Cache[K, V]) Store(key K, value V) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if entry, ok := c.data[key]; ok {
-		c.minHeap.update(entry, value, entry.frequency, entry.lastUsed)
+	if c.lfuPID != nil {
+		c.lfuPID.Store(key, value)
 		return
 	}
-
-	entry := &item[K, V]{
-		key:       key,
-		frequency: 1,
-		lastUsed:  c.clock,
-		value:     value,
-	}
-	c.data[key] = entry
-	heap.Push(c.minHeap, entry)
-
-	for len(c.data) > c.size {
-		remove := heap.Pop(c.minHeap).(*item[K, V])
-		delete(c.data, remove.key)
-	}
+	c.lfuHeap.Store(key, value)
 }
 
 func (c *Cache[K, V]) Load(key K) (V, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	item, ok := c.data[key]
-	if !ok {
-		return *new(V), false
+	if c.lfuPID != nil {
+		return c.lfuPID.Load(key)
 	}
-	c.clock++
-	item.frequency++
-	c.minHeap.update(item, item.value, item.frequency, item.lastUsed)
-	return item.value, true
+	return c.lfuHeap.Load(key)
+}
+
+type options struct {
+	usePID bool
+}
+
+// Option is a functional option for flexible and extensible configuration of
+// [*Cache], allowing modification of internal state or behavior during
+// construction.
+type Option func(*options) error
+
+func WithUsePID(enabled bool) Option {
+	return func(o *options) error {
+		o.usePID = enabled
+		return nil
+	}
+}
+
+// WithOptions permits aggregating multiple options together, and is useful to
+// avoid having to append options when creating helper functions or wrappers.
+func WithOptions(opts ...Option) Option {
+	return func(o *options) error {
+		for _, opt := range opts {
+			if err := opt(o); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
