@@ -13,10 +13,12 @@ type Workload struct {
 	keyspace  uint64
 	gen       *generator.FiniteZipf
 	stats     []*stats
+	start     time.Time
 }
 
 func (w *Workload) RunParallel(b *testing.B, cache Cache) {
 	var i atomic.Uint64
+	w.start = time.Now()
 	b.RunParallel(func(pb *testing.PB) {
 		id := i.Add(1) - 1
 		for pb.Next() {
@@ -47,6 +49,7 @@ func (w *Workload) Process(b *testing.B, cache Cache, id uint64) {
 }
 
 func (w *Workload) RecordMetrics(b *testing.B) {
+	duration := time.Since(w.start)
 	stats := newStats()
 	for _, stat := range w.stats {
 		stats.hits += stat.hits
@@ -54,6 +57,9 @@ func (w *Workload) RecordMetrics(b *testing.B) {
 		stats.totalLoadTime += stat.totalLoadTime
 		stats.totalStoreTime += stat.totalStoreTime
 	}
+	count := stats.hits + stats.misses
+	b.ReportMetric(float64(count)/duration.Seconds(), "op/s")
+
 	b.ReportMetric(stats.hitRate()*100, "hitRate")
 	b.ReportMetric(stats.loadDuration(), "load-ns/op")
 	b.ReportMetric(stats.storeDuration(), "store-ns/op")
