@@ -11,8 +11,8 @@ import (
 )
 
 type Benchmark struct {
-	gen      *generator.FiniteZipf
-	numProcs int
+	gen       *generator.FiniteZipf
+	workloads []*Workload
 }
 
 func New(b *testing.B, opts ...Option) *Benchmark {
@@ -22,35 +22,46 @@ func New(b *testing.B, opts ...Option) *Benchmark {
 	if err := WithOptions(opts...)(&cfg); err != nil {
 		b.Fatal(err)
 	}
-	gen, err := generator.NewFiniteZipf(500_000, 0.75, generator.WithSeed(1))
-	if err != nil {
-		b.Fatal(err)
+
+	numProcs := runtime.GOMAXPROCS(0) * cfg.parallelism
+
+	cacheSizes := []uint64{
+		50_000,
 	}
+
+	var workloads []*Workload
+	for _, cacheSize := range cacheSizes {
+		keyspace := 10 * cacheSize
+		gen, err := generator.NewFiniteZipf(keyspace, 0.75, generator.WithSeed(1))
+		if err != nil {
+			b.Fatal(err)
+		}
+		stats := make([]*stats, numProcs)
+		for i := range numProcs {
+			stats[i] = newStats()
+		}
+		workloads = append(workloads, &Workload{
+			cacheSize: int(cacheSize),
+			keyspace:  keyspace,
+			gen:       gen,
+			stats:     stats,
+		})
+	}
+
 	b.ReportAllocs()
 	b.SetParallelism(cfg.parallelism)
 	return &Benchmark{
-		gen:      gen,
-		numProcs: runtime.GOMAXPROCS(0) * cfg.parallelism,
+		workloads: workloads,
 	}
 }
 
 func (b *Benchmark) Workloads() iter.Seq[*Workload] {
-	return b.zipfWorkloads()
-}
-
-func (b *Benchmark) zipfWorkloads() iter.Seq[*Workload] {
-	stats := make([]*stats, b.numProcs)
-	for i := range b.numProcs {
-		stats[i] = newStats()
-	}
-	w := &Workload{
-		cacheSize: 50_000,
-		keyspace:  500_000,
-		gen:       b.gen,
-		stats:     stats,
-	}
 	return func(yield func(*Workload) bool) {
-		yield(w)
+		for _, workload := range b.workloads {
+			if !yield(workload) {
+				return
+			}
+		}
 	}
 }
 

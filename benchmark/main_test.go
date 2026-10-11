@@ -36,6 +36,16 @@ func Benchmark(b *testing.B) {
 				return cache
 			},
 		},
+		{
+			name: "lfu-pid-async",
+			newCache: func(b *testing.B, w *cachebench.Workload) cachebench.Cache {
+				cache, err := lfu.New[string, string](w.CacheSize(), lfu.WithUsePID(true), lfu.WithBackgroundEviction(true))
+				if err != nil {
+					b.Fatal(err)
+				}
+				return cache
+			},
+		},
 	}
 
 	for _, bb := range benchmarks {

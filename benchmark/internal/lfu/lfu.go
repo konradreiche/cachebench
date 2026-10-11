@@ -27,7 +27,7 @@ func New[K comparable, V any](size int, opts ...Option) (*Cache[K, V], error) {
 		lfuHeap: lfuHeap,
 	}
 	if cfg.usePID {
-		lfuPID, err := lfupid.New[K, V](size)
+		lfuPID, err := lfupid.New[K, V](size, lfupid.WithBackgroundEviction(cfg.backgroundEviction))
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +52,8 @@ func (c *Cache[K, V]) Load(key K) (V, bool) {
 }
 
 type options struct {
-	usePID bool
+	usePID             bool
+	backgroundEviction bool
 }
 
 // Option is a functional option for flexible and extensible configuration of
@@ -63,6 +64,13 @@ type Option func(*options) error
 func WithUsePID(enabled bool) Option {
 	return func(o *options) error {
 		o.usePID = enabled
+		return nil
+	}
+}
+
+func WithBackgroundEviction(enabled bool) Option {
+	return func(o *options) error {
+		o.backgroundEviction = enabled
 		return nil
 	}
 }
